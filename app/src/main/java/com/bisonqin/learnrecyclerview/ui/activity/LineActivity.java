@@ -3,51 +3,51 @@ package com.bisonqin.learnrecyclerview.ui.activity;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
-import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.design.widget.CoordinatorLayout;
 import android.support.v4.widget.SwipeRefreshLayout;
-import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.support.v7.widget.StaggeredGridLayoutManager;
-import android.support.v7.widget.Toolbar;
 import android.support.v7.widget.helper.ItemTouchHelper;
-import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
+import android.view.View;
 import android.view.WindowManager;
 
+import com.bisonqin.learnrecyclerview.Config;
 import com.bisonqin.learnrecyclerview.R;
 import com.bisonqin.learnrecyclerview.adapter.LineAdapter;
 import com.bisonqin.learnrecyclerview.bean.Girl;
-import com.bisonqin.learnrecyclerview.net.MyOkhttp;
-import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
-
-import org.json.JSONException;
-import org.json.JSONObject;
+import com.bisonqin.learnrecyclerview.mvp.callback.RemoveItemCallback;
+import com.bisonqin.learnrecyclerview.mvp.callback.AddItemCallback;
+import com.bisonqin.learnrecyclerview.mvp.contract.Contract;
+import com.bisonqin.learnrecyclerview.mvp.presenter.LinePresenter;
+import com.bisonqin.learnrecyclerview.ui.base.MVPBaseActivity;
+import com.bisonqin.learnrecyclerview.utils.SnackbarUtil;
 
 import java.util.Collections;
 import java.util.List;
 
 /**
- * Created by Bison on 2017/3/3.
+ * Created by Basil on 2017/3/4.
  */
-public class LineActivity extends AppCompatActivity {
+
+public class LineActivity extends MVPBaseActivity<Contract.View, LinePresenter> implements Contract.View{
 
     private static RecyclerView recyclerview;
     private CoordinatorLayout coordinatorLayout;
-    private LineAdapter mAdapter;
-    private List<Girl> girls;
     private LinearLayoutManager mLayoutManager;
-    private int lastVisibleItem ;
-    private int page=1;
-    private ItemTouchHelper itemTouchHelper;
-    private int screenwidth;
     private SwipeRefreshLayout swipeRefreshLayout;
 
-    public RecyclerView getRecyclerview() {
+    private int lastVisibleItem ;
+    private int page = 1;
+    private ItemTouchHelper itemTouchHelper;
+    private int screenwidth;
+    private LineAdapter mAdapter;
+    private List<Girl> data;
+
+    public static RecyclerView getRecyclerview() {
         return recyclerview;
     }
 
@@ -55,17 +55,28 @@ public class LineActivity extends AppCompatActivity {
         return coordinatorLayout;
     }
 
+    public boolean isAdapterNull() {
+        return mAdapter == null;
+    }
+
+    @Override
+    protected LinePresenter createPresenter() {
+        return new LinePresenter();
+    }
+
+    @Override
+    protected int provideContentViewId() {
+        return R.layout.activity_line;
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_line);
-        Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
-        setSupportActionBar(toolbar);
 
         initView();
         setListener();
 
-        new GetData().execute("http://gank.io/api/data/福利/10/1");
+        mPresenter.getPage(1);              //获取第一页
 
         //获取屏幕宽度
         WindowManager wm = (WindowManager) LineActivity.this
@@ -76,14 +87,14 @@ public class LineActivity extends AppCompatActivity {
     }
 
     private void initView(){
-        coordinatorLayout=(CoordinatorLayout)findViewById(R.id.line_coordinatorLayout);
+        coordinatorLayout = (CoordinatorLayout)findViewById(R.id.line_coordinatorLayout);
 
-        recyclerview=(RecyclerView)findViewById(R.id.line_recycler);
-        mLayoutManager=new LinearLayoutManager(this);
+        recyclerview = (RecyclerView)findViewById(R.id.line_recycler);
+        mLayoutManager = new LinearLayoutManager(this);
 
         recyclerview.setLayoutManager(mLayoutManager);
 
-        swipeRefreshLayout=(SwipeRefreshLayout) findViewById(R.id.line_swipe_refresh) ;
+        swipeRefreshLayout = (SwipeRefreshLayout) findViewById(R.id.line_swipe_refresh) ;
         swipeRefreshLayout.setColorSchemeResources(R.color.colorPrimary,R.color.colorPrimaryDark,R.color.colorAccent);
         swipeRefreshLayout.setProgressViewOffset(false, 0,  (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 24, getResources().getDisplayMetrics()));
     }
@@ -92,12 +103,12 @@ public class LineActivity extends AppCompatActivity {
         swipeRefreshLayout.setOnRefreshListener(new SwipeRefreshLayout.OnRefreshListener() {
             @Override
             public void onRefresh() {
-                page=1;
-                new GetData().execute("http://gank.io/api/data/福利/10/1");
+                page = 1;
+                mPresenter.getPage(page);
             }
         });
 
-        itemTouchHelper=new ItemTouchHelper(new ItemTouchHelper.Callback() {
+        itemTouchHelper = new ItemTouchHelper(new ItemTouchHelper.Callback() {
             @Override
             public int getMovementFlags(RecyclerView recyclerView, RecyclerView.ViewHolder viewHolder) {
                 int dragFlags=0,swipeFlags=0;
@@ -113,18 +124,40 @@ public class LineActivity extends AppCompatActivity {
 
             @Override
             public boolean onMove(RecyclerView recyclerView, RecyclerView.ViewHolder viewHolder, RecyclerView.ViewHolder target) {
-                int from=viewHolder.getAdapterPosition();
-                int to=target.getAdapterPosition();
-                Collections.swap(girls,from,to);
-                mAdapter.notifyItemMoved(from,to);
+                int from = viewHolder.getAdapterPosition();
+                int to = target.getAdapterPosition();
+                Collections.swap(data,from,to);
+                mAdapter.notifyItemMoved(from, to);
+
                 return true;
             }
 
             @Override
             public void onSwiped(RecyclerView.ViewHolder viewHolder, int direction) {
+                final int position = viewHolder.getAdapterPosition();
 
-                mAdapter.removeItem(viewHolder.getAdapterPosition());
-
+                mAdapter.removeItem(position, new RemoveItemCallback() {
+                    @Override
+                    public void onSuccess(final Girl girl) {
+                        SnackbarUtil.ShortSnackbar(coordinatorLayout,
+                                "你删除了第" + position + "个item",
+                                SnackbarUtil.Warning).setAction("撤销",
+                                new View.OnClickListener() {
+                                    @Override
+                                    public void onClick(View v) {
+                                        mAdapter.addItem(position, girl, new AddItemCallback() {
+                                            @Override
+                                            public void onSuccess() {
+                                                SnackbarUtil.ShortSnackbar(coordinatorLayout,
+                                                        "撤销了删除第" + position + "个item",
+                                                        SnackbarUtil.Confirm).show();
+                                                recyclerview.scrollToPosition(position);
+                                            }
+                                        });
+                                    }
+                                }).setActionTextColor(Color.WHITE).show();
+                    }
+                });
             }
 
             @Override
@@ -157,7 +190,7 @@ public class LineActivity extends AppCompatActivity {
                 //               滑动状态停止并且剩余两个item时自动加载
                 if (newState == RecyclerView.SCROLL_STATE_IDLE
                         && lastVisibleItem +2>=mLayoutManager.getItemCount()) {
-                    new GetData().execute("http://gank.io/api/data/福利/10/"+(++page));
+                    mPresenter.getPage(++page);
                 }
             }
 
@@ -166,63 +199,38 @@ public class LineActivity extends AppCompatActivity {
                 super.onScrolled(recyclerView, dx, dy);
                 //                获取加载的最后一个可见视图在适配器的位置。
                 lastVisibleItem = mLayoutManager.findLastVisibleItemPosition();
-
             }
-
         });
     }
 
+    @Override
+    public boolean canBack() {
+        return true;
+    }
 
-    private class GetData extends AsyncTask<String, Integer, String> {
-
-        @Override
-        protected void onPreExecute() {
-            super.onPreExecute();
-
-            swipeRefreshLayout.setRefreshing(true);
+    @Override
+    public void setRecyclerAdapter(List<Girl> data) {
+        this.data = data;
+        if(null != recyclerview && null != itemTouchHelper) {
+            //recyclerview.setAdapter(mAdapter = new LineAdapter(LineActivity.this, data));
+            recyclerview.setAdapter(mAdapter = new LineAdapter(getBaseContext(), data, R.layout.line_meizi_item, coordinatorLayout));
+            itemTouchHelper.attachToRecyclerView(recyclerview);
         }
+    }
 
-        @Override
-        protected String doInBackground(String... params) {
-
-            return MyOkhttp.get(params[0]);
+    @Override
+    public void setRefreshStatus(boolean flag) {
+        if(null != swipeRefreshLayout) {
+            swipeRefreshLayout.setRefreshing(flag);
         }
+    }
 
-        protected void onPostExecute(String result) {
-            super.onPostExecute(result);
-            if(!TextUtils.isEmpty(result)){
-
-                JSONObject jsonObject;
-                Gson gson=new Gson();
-                String jsonData=null;
-
-                try {
-                    jsonObject = new JSONObject(result);
-                    jsonData = jsonObject.getString("results");
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
-                if(girls ==null|| girls.size()==0){
-                    girls = gson.fromJson(jsonData, new TypeToken<List<Girl>>() {}.getType());
-                    Girl pages=new Girl();
-                    pages.setPage(page);
-                    girls.add(pages);
-                }else{
-                    List<Girl> more= gson.fromJson(jsonData, new TypeToken<List<Girl>>() {}.getType());
-                    girls.addAll(more);
-                    Girl pages=new Girl();
-                    pages.setPage(page);
-                    girls.add(pages);
-                }
-
-                if(mAdapter==null){
-                    recyclerview.setAdapter(mAdapter = new LineAdapter(LineActivity.this, girls));
-                    itemTouchHelper.attachToRecyclerView(recyclerview);
-                }else{
-                    mAdapter.notifyDataSetChanged();
-                }
-            }
-            swipeRefreshLayout.setRefreshing(false);
+    @Override
+    public void operatedAdapter(int operationCode) {
+        switch (operationCode) {
+            case Config.NOTIFY_DATA_SET_CHANGE:
+                mAdapter.notifyDataSetChanged();
+                break;
         }
     }
 }

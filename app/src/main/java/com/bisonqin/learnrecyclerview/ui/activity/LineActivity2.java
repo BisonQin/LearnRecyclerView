@@ -3,31 +3,29 @@ package com.bisonqin.learnrecyclerview.ui.activity;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
-import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.support.design.widget.CoordinatorLayout;
 import android.support.v4.widget.SwipeRefreshLayout;
-import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.support.v7.widget.StaggeredGridLayoutManager;
-import android.support.v7.widget.Toolbar;
 import android.support.v7.widget.helper.ItemTouchHelper;
-import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
+import android.view.View;
 import android.view.WindowManager;
 
+import com.bisonqin.learnrecyclerview.Config;
 import com.bisonqin.learnrecyclerview.R;
 import com.bisonqin.learnrecyclerview.adapter.Line2Adapter;
 import com.bisonqin.learnrecyclerview.bean.Girl;
-import com.bisonqin.learnrecyclerview.net.MyOkhttp;
-import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
-
-import org.json.JSONException;
-import org.json.JSONObject;
+import com.bisonqin.learnrecyclerview.mvp.callback.AddItemCallback;
+import com.bisonqin.learnrecyclerview.mvp.callback.RemoveItemCallback;
+import com.bisonqin.learnrecyclerview.mvp.contract.Contract;
+import com.bisonqin.learnrecyclerview.mvp.presenter.LinePresenter;
+import com.bisonqin.learnrecyclerview.ui.base.MVPBaseActivity;
+import com.bisonqin.learnrecyclerview.utils.SnackbarUtil;
 
 import java.util.Collections;
 import java.util.List;
@@ -37,18 +35,19 @@ import java.util.List;
  * Created by Bison on 2017/3/3.
  */
 
-public class LineActivity2 extends AppCompatActivity {
+public class LineActivity2 extends MVPBaseActivity<Contract.View, LinePresenter>  implements Contract.View{
 
     private static RecyclerView recyclerview;
     private CoordinatorLayout coordinatorLayout;
+    private SwipeRefreshLayout swipeRefreshLayout;
+    private LinearLayoutManager mLayoutManager;
+    private ItemTouchHelper itemTouchHelper;
     private Line2Adapter mAdapter;
     private List<Girl> girls;
-    private LinearLayoutManager mLayoutManager;
+
     private int lastVisibleItem ;
     private int page=1;
-    private ItemTouchHelper itemTouchHelper;
     private boolean remove;
-    private SwipeRefreshLayout swipeRefreshLayout;
     private int screenwidth;
 
     public RecyclerView getRecyclerview() {
@@ -66,9 +65,6 @@ public class LineActivity2 extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_line);
-        Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
-        setSupportActionBar(toolbar);
 
         initView();
         setListener();
@@ -78,7 +74,17 @@ public class LineActivity2 extends AppCompatActivity {
         wm.getDefaultDisplay().getMetrics(outMetrics);
         screenwidth = outMetrics.widthPixels;
 
-        new GetData().execute("http://gank.io/api/data/福利/10/1");
+        mPresenter.getPage(1);
+    }
+
+    @Override
+    protected LinePresenter createPresenter() {
+        return new LinePresenter();
+    }
+
+    @Override
+    protected int provideContentViewId() {
+        return R.layout.activity_line;
     }
 
     private void initView(){
@@ -96,8 +102,8 @@ public class LineActivity2 extends AppCompatActivity {
         swipeRefreshLayout.setOnRefreshListener(new SwipeRefreshLayout.OnRefreshListener() {
             @Override
             public void onRefresh() {
-                page=1;
-                new GetData().execute("http://gank.io/api/data/福利/10/1");
+                page = 1;
+                mPresenter.getPage(1);
             }
         });
 
@@ -127,7 +133,28 @@ public class LineActivity2 extends AppCompatActivity {
             @Override
             public void onSwiped(RecyclerView.ViewHolder viewHolder, int direction) {
 
-                mAdapter.removeItem(viewHolder.getAdapterPosition());
+                final int position = viewHolder.getAdapterPosition();
+
+                mAdapter.removeItem(position, new RemoveItemCallback() {
+                    @Override
+                    public void onSuccess(final Girl girl) {
+                        SnackbarUtil.ShortSnackbar(coordinatorLayout,
+                                "你删除了第" + position + "个item",
+                                SnackbarUtil.Warning).setAction("撤销", new View.OnClickListener() {
+                            @Override
+                            public void onClick(View v) {
+                                mAdapter.addItem(position, girl, new AddItemCallback() {
+                                    @Override
+                                    public void onSuccess() {
+                                        SnackbarUtil.ShortSnackbar(coordinatorLayout,
+                                                "撤销了删除第" + position + "个item",
+                                                SnackbarUtil.Confirm).show();
+                                    }
+                                });
+                            }
+                        }).setActionTextColor(Color.WHITE).show();
+                    }
+                });
             }
 
             @Override
@@ -162,9 +189,30 @@ public class LineActivity2 extends AppCompatActivity {
                     remove=false;
                 }
                 if(actionState== ItemTouchHelper.ACTION_STATE_SWIPE&&remove==true&&!isCurrentlyActive){
+                    final int position = viewHolder.getAdapterPosition();
+
                     //当用户滑动tem超过屏幕5分之1，并且松手时，执行删除item
-                    if(viewHolder!=null&&viewHolder.getAdapterPosition()>=0){
-                        mAdapter.removeItem(viewHolder.getAdapterPosition());
+                    if(viewHolder != null && position >= 0){
+                        mAdapter.removeItem(position, new RemoveItemCallback() {
+                            @Override
+                            public void onSuccess(final Girl girl) {
+                                SnackbarUtil.ShortSnackbar(coordinatorLayout,
+                                        "你删除了第" + position + "个item",
+                                        SnackbarUtil.Warning).setAction("撤销", new View.OnClickListener() {
+                                    @Override
+                                    public void onClick(View v) {
+                                        mAdapter.addItem(position, girl, new AddItemCallback() {
+                                            @Override
+                                            public void onSuccess() {
+                                                SnackbarUtil.ShortSnackbar(coordinatorLayout,
+                                                        "撤销了删除第" + position + "个item",
+                                                        SnackbarUtil.Confirm).show();
+                                            }
+                                        });
+                                    }
+                                }).setActionTextColor(Color.WHITE).show();
+                            }
+                        });
                         remove=false;
                     }
                 }
@@ -180,7 +228,7 @@ public class LineActivity2 extends AppCompatActivity {
 
                 if (newState == RecyclerView.SCROLL_STATE_IDLE
                         && lastVisibleItem +2>=mLayoutManager.getItemCount()) {
-                    new GetData().execute("http://gank.io/api/data/福利/10/"+(++page));
+                    mPresenter.getPage(++page);
                 }
             }
 
@@ -188,64 +236,43 @@ public class LineActivity2 extends AppCompatActivity {
             public void onScrolled(RecyclerView recyclerView, int dx, int dy) {
                 super.onScrolled(recyclerView, dx, dy);
                 lastVisibleItem = mLayoutManager.findLastVisibleItemPosition();
-
             }
 
         });
     }
 
-    private class GetData extends AsyncTask<String, Integer, String> {
+    @Override
+    public boolean canBack() {
+        return true;
+    }
 
-        @Override
-        protected void onPreExecute() {
-            super.onPreExecute();
-
-            swipeRefreshLayout.setRefreshing(true);
+    @Override
+    public void setRecyclerAdapter(List<Girl> data) {
+        this.girls = data;
+        if(null != recyclerview && null != itemTouchHelper) {
+            recyclerview.setAdapter(mAdapter = new Line2Adapter(getBaseContext(), data, R.layout.line_meizi_item2, LineActivity2.this));
+            itemTouchHelper.attachToRecyclerView(recyclerview);     //设置滑动隐藏
         }
+    }
 
-        @Override
-        protected String doInBackground(String... params) {
-
-            return MyOkhttp.get(params[0]);
+    @Override
+    public void setRefreshStatus(boolean flag) {
+        if(null != swipeRefreshLayout) {
+            swipeRefreshLayout.setRefreshing(flag);
         }
+    }
 
-        @Override
-        protected void onPostExecute(String result) {
-            super.onPostExecute(result);
-            if(!TextUtils.isEmpty(result)){
+    @Override
+    public boolean isAdapterNull() {
+        return null == mAdapter;
+    }
 
-                JSONObject jsonObject;
-                Gson gson = new Gson();
-                String jsonData = null;
-
-                try {
-                    jsonObject = new JSONObject(result);
-                    jsonData = jsonObject.getString("results");
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
-
-                if(null == girls|| 0 == girls.size()){
-                    girls = gson.fromJson(jsonData, new TypeToken<List<Girl>>() {}.getType());
-                    Girl pages = new Girl();
-                    pages.setPage(page);
-                    girls.add(pages);
-                }else{
-                    List<Girl> more= gson.fromJson(jsonData, new TypeToken<List<Girl>>() {}.getType());
-                    girls.addAll(more);
-                    Girl pages=new Girl();
-                    pages.setPage(page);
-                    girls.add(pages);
-                }
-
-                if(mAdapter==null){
-                    recyclerview.setAdapter(mAdapter = new Line2Adapter(LineActivity2.this, girls));
-                    itemTouchHelper.attachToRecyclerView(recyclerview);
-                }else{
-                    mAdapter.notifyDataSetChanged();
-                }
-            }
-            swipeRefreshLayout.setRefreshing(false);
+    @Override
+    public void operatedAdapter(int operationCode) {
+        switch (operationCode) {
+            case Config.NOTIFY_DATA_SET_CHANGE:
+                mAdapter.notifyDataSetChanged();
+                break;
         }
     }
 }

@@ -1,68 +1,70 @@
 package com.bisonqin.learnrecyclerview.ui.activity;
 
-import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.design.widget.CoordinatorLayout;
 import android.support.v4.widget.SwipeRefreshLayout;
-import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.GridLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.support.v7.widget.StaggeredGridLayoutManager;
-import android.support.v7.widget.Toolbar;
 import android.support.v7.widget.helper.ItemTouchHelper;
-import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.View;
 
+import com.bisonqin.learnrecyclerview.Config;
 import com.bisonqin.learnrecyclerview.R;
 import com.bisonqin.learnrecyclerview.adapter.GridAdapter;
 import com.bisonqin.learnrecyclerview.bean.Girl;
-import com.bisonqin.learnrecyclerview.net.MyOkhttp;
+import com.bisonqin.learnrecyclerview.mvp.contract.Contract;
+import com.bisonqin.learnrecyclerview.mvp.presenter.LinePresenter;
+import com.bisonqin.learnrecyclerview.ui.base.MVPBaseActivity;
 import com.bisonqin.learnrecyclerview.utils.SnackbarUtil;
-import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
-
-import org.json.JSONException;
-import org.json.JSONObject;
 
 import java.util.List;
 
 /**
  * Created by Bison on 2017/3/3.
  */
-public class GridActivity extends AppCompatActivity {
+public class GridActivity extends MVPBaseActivity<Contract.View, LinePresenter> implements Contract.View{
 
     private static RecyclerView recyclerview;
     private CoordinatorLayout coordinatorLayout;
+    private SwipeRefreshLayout swipeRefreshLayout;
+    private GridLayoutManager mLayoutManager;
+    private ItemTouchHelper itemTouchHelper;
+
     private GridAdapter mAdapter;
     private List<Girl> girls;
-    private GridLayoutManager mLayoutManager;
     private int lastVisibleItem;
     private int page = 1;
-    private ItemTouchHelper itemTouchHelper;
-    private SwipeRefreshLayout swipeRefreshLayout;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_grid);
-        Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
-        setSupportActionBar(toolbar);
 
         initView();
         setListener();
 
-        new GetData().execute("http://gank.io/api/data/福利/10/1");
+        mPresenter.getPage(1);
+    }
+
+    @Override
+    protected LinePresenter createPresenter() {
+        return new LinePresenter();
+    }
+
+    @Override
+    protected int provideContentViewId() {
+        return R.layout.activity_grid;
     }
 
     private void initView(){
-        coordinatorLayout=(CoordinatorLayout)findViewById(R.id.grid_coordinatorLayout);
+        coordinatorLayout = (CoordinatorLayout)findViewById(R.id.grid_coordinatorLayout);
 
-        recyclerview=(RecyclerView)findViewById(R.id.grid_recycler);
-        mLayoutManager=new GridLayoutManager(GridActivity.this,3, GridLayoutManager.VERTICAL,false);
+        recyclerview = (RecyclerView)findViewById(R.id.grid_recycler);
+        mLayoutManager = new GridLayoutManager(GridActivity.this,3, GridLayoutManager.VERTICAL,false);
         recyclerview.setLayoutManager(mLayoutManager);
 
-        swipeRefreshLayout=(SwipeRefreshLayout) findViewById(R.id.grid_swipe_refresh) ;
+        swipeRefreshLayout = (SwipeRefreshLayout) findViewById(R.id.grid_swipe_refresh) ;
         //调整SwipeRefreshLayout的位置
         swipeRefreshLayout.setProgressViewOffset(false, 0,  (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 24, getResources().getDisplayMetrics()));
     }
@@ -73,7 +75,7 @@ public class GridActivity extends AppCompatActivity {
             @Override
             public void onRefresh() {
                 page=1;
-                new GetData().execute("http://gank.io/api/data/福利/10/1");
+                mPresenter.getPage(1);
             }
         });
 
@@ -118,7 +120,7 @@ public class GridActivity extends AppCompatActivity {
                 // 滑动状态停止并且剩余少于两个item时，自动加载下一页
                 if (newState == RecyclerView.SCROLL_STATE_IDLE
                         && lastVisibleItem +2>=mLayoutManager.getItemCount()) {
-                    new GetData().execute("http://gank.io/api/data/福利/10/"+(++page));
+                    mPresenter.getPage(++ page);
                 }
             }
 
@@ -132,75 +134,50 @@ public class GridActivity extends AppCompatActivity {
         });
     }
 
+    @Override
+    public boolean canBack() {
+        return true;
+    }
 
-    private class GetData extends AsyncTask<String, Integer, String> {          //异步执行网络请求
+    @Override
+    public void setRecyclerAdapter(List<Girl> data) {
+        this.girls = data;
+        if(null != recyclerview && null != itemTouchHelper) {
+            recyclerview.setAdapter(mAdapter = new GridAdapter(GridActivity.this, data));
 
-        @Override
-        protected void onPreExecute() {
-            super.onPreExecute();
-            //设置swipeRefreshLayout为刷新状态
-            swipeRefreshLayout.setRefreshing(true);
-        }
-
-        @Override
-        protected String doInBackground(String... params) {
-
-            return MyOkhttp.get(params[0]);         //网址传进来了
-        }
-
-        protected void onPostExecute(String result) {
-            super.onPostExecute(result);
-            if(!TextUtils.isEmpty(result)){
-
-                JSONObject jsonObject;
-                Gson gson = new Gson();                                 //利用Gson解析库解析
-                String jsonData = null;                                 //装有图片具体信息的results数组
-
-                try {
-                    jsonObject = new JSONObject(result);
-                    jsonData = jsonObject.getString("results");         //首先从返回的结果中解析出results数组
-                } catch (JSONException e) {
-                    e.printStackTrace();
+            mAdapter.setOnItemClickListener(new GridAdapter.OnRecyclerViewItemClickListener() {
+                @Override
+                public void onItemClick(View view) {
+                    int position=recyclerview.getChildAdapterPosition(view);
+                    SnackbarUtil.ShortSnackbar(coordinatorLayout,"点击第"+position+"个", SnackbarUtil.Info).show();
                 }
 
-                if(null == girls|| 0 == girls.size()){                  //如果数组为空
-                    //使用了TypeToken，它是gson提供的数据类型转换器，可以支持各种数据集合类型转换
-                    girls = gson.fromJson(jsonData, new TypeToken<List<Girl>>() {}.getType());
-                    Girl pages = new Girl();                            //创建承接数据的对象
-                    pages.setPage(page);                                //设置当前页数为1
-                    girls.add(pages);
-                }else{
-                    List<Girl> more = gson.fromJson(jsonData, new TypeToken<List<Girl>>() {}.getType());
-                    girls.addAll(more);
-                    Girl pages = new Girl();
-                    pages.setPage(page);
-                    girls.add(pages);
+                @Override
+                public void onItemLongClick(View view) {
+                    itemTouchHelper.startDrag(recyclerview.getChildViewHolder(view));
                 }
+            });
 
-                if(null == mAdapter){
-                    recyclerview.setAdapter(mAdapter = new GridAdapter(GridActivity.this, girls));
-
-                    mAdapter.setOnItemClickListener(new GridAdapter.OnRecyclerViewItemClickListener() {
-                        @Override
-                        public void onItemClick(View view) {
-                            int position =recyclerview.getChildAdapterPosition(view);
-                            SnackbarUtil.ShortSnackbar(coordinatorLayout,"点击第"+position+"个",SnackbarUtil.Info).show();
-                        }
-
-                        @Override
-                        public void onItemLongClick(View view) {
-                             itemTouchHelper.startDrag(recyclerview.getChildViewHolder(view));
-                        }
-                    });
-
-                    itemTouchHelper.attachToRecyclerView(recyclerview);
-                }else{
-                    mAdapter.notifyDataSetChanged();
-                }
-            }
-            //停止swipeRefreshLayout加载动画
-            swipeRefreshLayout.setRefreshing(false);
+            itemTouchHelper.attachToRecyclerView(recyclerview);
         }
     }
 
+    @Override
+    public void setRefreshStatus(boolean flag) {
+        swipeRefreshLayout.setRefreshing(flag);
+    }
+
+    @Override
+    public boolean isAdapterNull() {
+        return null == mAdapter;
+    }
+
+    @Override
+    public void operatedAdapter(int operationCode) {
+        switch (operationCode) {
+            case Config.NOTIFY_DATA_SET_CHANGE:
+                mAdapter.notifyDataSetChanged();
+                break;
+        }
+    }
 }
