@@ -9,11 +9,11 @@ Thanks for Open Source Demo.[https://github.com/zhaochenpu/RecyclerViewDemo](htt
 On the basis of this project, I modified some things, such as the replacement of the image loading library, packaging BaseRecyclerViewAdapter, BaseViewHolder, etc., and the use of MVP architecture.
 
 ##Some Screenshot
-![](http://p1.bqimg.com/567571/c28602e1c984d22f.gif)
+![](https://github.com/BisonQin/LearnRecyclerView/blob/master/1.gif)
 
-![](http://p1.bqimg.com/567571/e7efdaafb6881456.gif)      
+![](https://github.com/BisonQin/LearnRecyclerView/blob/master/2.gif)      
 
-![](http://p1.bqimg.com/567571/257c89c5a1c4751b.gif)
+![](https://github.com/BisonQin/LearnRecyclerView/blob/master/3.gif)
 
 ##And So On  
 1. RecylerView encapsulates the ViewHolder recycling reuse, that is, RecylerView standardized ViewHolder, the preparation of Adapter oriented ViewHolder is no longer View
